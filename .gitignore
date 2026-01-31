@@ -1,0 +1,5 @@
+.env
+database.db
+orders_backup.csv
+__pycache__/
+venv/
