@@ -4,11 +4,7 @@ import requests
 from datetime import datetime
 
 from dotenv import load_dotenv
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -68,9 +64,6 @@ CATEGORIES = {
     }
 }
 
-STATE_WAIT_PRICE = "WAIT_PRICE"
-STATE_WAIT_EU_CURRENCY = "WAIT_EU_CURRENCY"
-
 DB_FILE = "database.db"
 
 # ================= DATABASE =================
@@ -116,7 +109,7 @@ def round_weight(weight: float) -> float:
         return int(weight) + 0.3
     return int(weight) + 1
 
-async def delete_last_message(context):
+async def delete_last_message(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.user_data.get("chat_id")
     message_id = context.user_data.get("last_message_id")
     if not chat_id or not message_id:
@@ -127,7 +120,6 @@ async def delete_last_message(context):
         pass
     finally:
         context.user_data["last_message_id"] = None
-
 
 def save_last_message(context: ContextTypes.DEFAULT_TYPE, msg):
     context.user_data["last_message_id"] = msg.message_id
@@ -159,9 +151,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= COUNTRY =================
 
 async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await delete_last_message(context)
     q = update.callback_query
     await q.answer()
+
+    if context.user_data.get("locked"):
+        return
+    context.user_data["locked"] = True
+
+    await delete_last_message(context)
 
     context.user_data["country"] = q.data.split(":")[1]
 
@@ -176,12 +173,19 @@ async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     save_last_message(context, msg)
 
+    context.user_data["locked"] = False
+
 # ================= CATEGORY =================
 
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await delete_last_message(context)
     q = update.callback_query
     await q.answer()
+
+    if context.user_data.get("locked"):
+        return
+    context.user_data["locked"] = True
+
+    await delete_last_message(context)
 
     category = q.data.split(":")[1]
     context.user_data["category"] = category
@@ -197,29 +201,38 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     save_last_message(context, msg)
 
+    context.user_data["locked"] = False
+
 # ================= SUBCATEGORY =================
 
 async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await delete_last_message(context)
     q = update.callback_query
     await q.answer()
+
+    if context.user_data.get("locked"):
+        return
+    context.user_data["locked"] = True
+
+    await delete_last_message(context)
 
     sub = q.data.split(":")[1]
     category = context.user_data["category"]
 
     context.user_data["subcategory"] = sub
     context.user_data["weight"] = round_weight(CATEGORIES[category][sub])
-    context.user_data["state"] = STATE_WAIT_PRICE
+    context.user_data["waiting_price"] = True
 
     msg = await q.message.reply_text(
-        "💰 Введи стоимость товара:"
+        "💰 Введи стоимость товара числом:"
     )
     save_last_message(context, msg)
+
+    context.user_data["locked"] = False
 
 # ================= PRICE =================
 
 async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("state") != STATE_WAIT_PRICE:
+    if not context.user_data.get("waiting_price"):
         return
 
     text = update.message.text.strip()
@@ -230,11 +243,12 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return
 
+    context.user_data["waiting_price"] = False
     context.user_data["price_input"] = price
+
     country = context.user_data["country"]
 
     if country == "Европа":
-        context.user_data["state"] = STATE_WAIT_EU_CURRENCY
         keyboard = [
             [InlineKeyboardButton(cur, callback_data=f"eu:{cur}")]
             for cur in EU_CURRENCIES
@@ -251,12 +265,19 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= EURO =================
 
 async def choose_eu_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await delete_last_message(context)
     q = update.callback_query
     await q.answer()
 
+    if context.user_data.get("locked"):
+        return
+    context.user_data["locked"] = True
+
+    await delete_last_message(context)
+
     currency = q.data.split(":")[1]
     await calculate_total(update, context, base_currency=currency)
+
+    context.user_data["locked"] = False
 
 # ================= CALC =================
 
@@ -281,7 +302,6 @@ async def calculate_total(update: Update, context: ContextTypes.DEFAULT_TYPE, ba
     total = int(subtotal + commission)
 
     context.user_data["total"] = total
-    context.user_data["state"] = None
 
     keyboard = [[
         InlineKeyboardButton("✅ Подтвердить заказ", callback_data="confirm"),
@@ -302,9 +322,10 @@ async def calculate_total(update: Update, context: ContextTypes.DEFAULT_TYPE, ba
 # ================= CONFIRM =================
 
 async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await delete_last_message(context)
     q = update.callback_query
     await q.answer()
+
+    await delete_last_message(context)
 
     order_number = f"KD-{int(datetime.now().timestamp())}"
 
@@ -348,7 +369,7 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_last_message(context, msg)
     context.user_data.clear()
 
-# ================= EXTRA =================
+# ================= MY ORDERS =================
 
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -368,6 +389,8 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{r[0]} — {r[1]}\n"
 
     await q.message.reply_text(text)
+
+# ================= NEW ORDER =================
 
 async def new_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
