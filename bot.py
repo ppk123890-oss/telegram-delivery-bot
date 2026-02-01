@@ -213,7 +213,7 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     msg = await q.message.reply_text(
         "💰 Введи стоимость товара:"
-    
+    )
     save_last_message(context, msg)
 
 # ================= PRICE =================
