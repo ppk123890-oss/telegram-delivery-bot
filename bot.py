@@ -29,13 +29,7 @@ EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY")
 
 BANK_FEE = 0.002  # 0.2%
 
-COUNTRIES = [
-    "Китай",
-    "США",
-    "Европа",
-    "Япония",
-    "Южная Корея"
-]
+COUNTRIES = ["Китай", "США", "Европа", "Япония", "Южная Корея"]
 
 DELIVERY_PRICE_PER_KG = {
     "Китай": 8,
@@ -74,7 +68,6 @@ CATEGORIES = {
     }
 }
 
-# FSM STATES
 STATE_WAIT_PRICE = "WAIT_PRICE"
 STATE_WAIT_EU_CURRENCY = "WAIT_EU_CURRENCY"
 
@@ -115,6 +108,14 @@ def calc_commission(rub: float) -> int:
         return 1000
     return 1500
 
+def round_weight(weight: float) -> float:
+    remainder = weight % 1
+    if remainder == 0:
+        return weight
+    if remainder <= 0.3:
+        return int(weight) + 0.3
+    return int(weight) + 1
+
 async def delete_last_message(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.user_data.get("chat_id")
     message_id = context.user_data.get("last_message_id")
@@ -128,14 +129,6 @@ async def delete_last_message(context: ContextTypes.DEFAULT_TYPE):
 def save_last_message(context: ContextTypes.DEFAULT_TYPE, msg):
     context.user_data["last_message_id"] = msg.message_id
 
-def round_weight(weight: float) -> float:
-    remainder = weight % 1
-    if remainder == 0:
-        return weight
-    if remainder <= 0.3:
-        return int(weight) + 0.3
-    return int(weight) + 1
-
 # ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -143,8 +136,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["chat_id"] = update.effective_chat.id
 
     keyboard = [
-        [InlineKeyboardButton(country, callback_data=f"country:{country}")]
-        for country in COUNTRIES
+        [InlineKeyboardButton(c, callback_data=f"country:{c}")]
+        for c in COUNTRIES
     ]
 
     msg = await update.message.reply_text(
@@ -164,12 +157,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_last_message(context)
-
     q = update.callback_query
     await q.answer()
 
-    country = q.data.split(":")[1]
-    context.user_data["country"] = country
+    context.user_data["country"] = q.data.split(":")[1]
 
     keyboard = [
         [InlineKeyboardButton(cat, callback_data=f"cat:{cat}")]
@@ -186,7 +177,6 @@ async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_last_message(context)
-
     q = update.callback_query
     await q.answer()
 
@@ -208,7 +198,6 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_last_message(context)
-
     q = update.callback_query
     await q.answer()
 
@@ -239,15 +228,14 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data["price_input"] = price
-
     country = context.user_data["country"]
 
     if country == "Европа":
+        context.user_data["state"] = STATE_WAIT_EU_CURRENCY
         keyboard = [
             [InlineKeyboardButton(cur, callback_data=f"eu:{cur}")]
             for cur in EU_CURRENCIES
         ]
-        context.user_data["state"] = STATE_WAIT_EU_CURRENCY
         msg = await update.message.reply_text(
             "💱 Выбери валюту товара:",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -257,18 +245,17 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await calculate_total(update, context, base_currency="USD")
 
-# ================= EUROPE CURRENCY =================
+# ================= EURO =================
 
 async def choose_eu_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_last_message(context)
-
     q = update.callback_query
     await q.answer()
 
     currency = q.data.split(":")[1]
     await calculate_total(update, context, base_currency=currency)
 
-# ================= CALCULATION =================
+# ================= CALC =================
 
 async def calculate_total(update: Update, context: ContextTypes.DEFAULT_TYPE, base_currency: str):
     country = context.user_data["country"]
@@ -293,12 +280,10 @@ async def calculate_total(update: Update, context: ContextTypes.DEFAULT_TYPE, ba
     context.user_data["total"] = total
     context.user_data["state"] = None
 
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Подтвердить заказ", callback_data="confirm"),
-            InlineKeyboardButton("❌ Отменить", callback_data="cancel")
-        ]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("✅ Подтвердить заказ", callback_data="confirm"),
+        InlineKeyboardButton("❌ Отменить", callback_data="cancel")
+    ]]
 
     msg = await update.effective_chat.send_message(
         f"📦 Итоговый расчёт:\n\n"
@@ -315,7 +300,6 @@ async def calculate_total(update: Update, context: ContextTypes.DEFAULT_TYPE, ba
 
 async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_last_message(context)
-
     q = update.callback_query
     await q.answer()
 
@@ -359,7 +343,6 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     save_last_message(context, msg)
-
     context.user_data.clear()
 
 # ================= EXTRA =================
@@ -413,13 +396,13 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_panel))
 
-    app.add_handler(CallbackQueryHandler(choose_country, "^country:"))
-    app.add_handler(CallbackQueryHandler(choose_category, "^cat:"))
-    app.add_handler(CallbackQueryHandler(choose_subcategory, "^sub:"))
-    app.add_handler(CallbackQueryHandler(choose_eu_currency, "^eu:"))
-    app.add_handler(CallbackQueryHandler(confirm_order, "^confirm$"))
-    app.add_handler(CallbackQueryHandler(my_orders, "^my_orders$"))
-    app.add_handler(CallbackQueryHandler(new_order, "^new_order$"))
+    app.add_handler(CallbackQueryHandler(choose_country, pattern="^country:"))
+    app.add_handler(CallbackQueryHandler(choose_category, pattern="^cat:"))
+    app.add_handler(CallbackQueryHandler(choose_subcategory, pattern="^sub:"))
+    app.add_handler(CallbackQueryHandler(choose_eu_currency, pattern="^eu:"))
+    app.add_handler(CallbackQueryHandler(confirm_order, pattern="^confirm$"))
+    app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
+    app.add_handler(CallbackQueryHandler(new_order, pattern="^new_order$"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_price))
 
