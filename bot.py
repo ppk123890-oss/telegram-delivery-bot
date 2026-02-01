@@ -4,11 +4,7 @@ import requests
 from datetime import datetime
 
 from dotenv import load_dotenv
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,14 +15,12 @@ from telegram.ext import (
 )
 
 # ================= ENV =================
-
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY")
 
-# ================= CONSTANTS =================
-
+# ================= CONST =================
 BANK_FEE = 0.002
 
 COUNTRIES = ["Китай", "Япония", "Южная Корея", "Европа", "США"]
@@ -56,10 +50,7 @@ CATEGORIES = {
     }
 }
 
-EU_CURRENCIES = ["EUR", "PLN", "GBP"]
-
-# ================= DATABASE =================
-
+# ================= DB =================
 DB_FILE = "database.db"
 
 def init_db():
@@ -73,8 +64,6 @@ def init_db():
             country TEXT,
             category TEXT,
             subcategory TEXT,
-            price REAL,
-            currency TEXT,
             total_rub REAL,
             status TEXT,
             created_at TEXT
@@ -82,7 +71,6 @@ def init_db():
         """)
 
 # ================= UTILS =================
-
 def get_rate(base, target):
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/{base}"
     return requests.get(url, timeout=10).json()["conversion_rates"][target]
@@ -94,21 +82,22 @@ def calc_commission(rub):
         return 1000
     return 1500
 
-def clear_last(context):
+def delete_last(context):
     try:
-        bot = context.bot
         cid = context.user_data.get("chat_id")
         mid = context.user_data.get("last_msg")
         if cid and mid:
-            return bot.delete_message(cid, mid)
+            return context.bot.delete_message(cid, mid)
     except:
         pass
 
 def save_last(context, msg):
     context.user_data["last_msg"] = msg.message_id
 
-# ================= START =================
+# ================= STATES =================
+WAIT_PRICE = "wait_price"
 
+# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["chat_id"] = update.effective_chat.id
@@ -120,22 +109,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text(
         "👋 **Koru Delivery**\n\n"
-        "Я помогу рассчитать *примерную* стоимость доставки.\n\n"
+        "Я рассчитаю *примерную* стоимость доставки.\n\n"
         "Выбери страну выкупа:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     save_last(context, msg)
 
-# ================= COUNTRY =================
-
+# ================= FLOW =================
 async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await clear_last(context)
+    await delete_last(context)
     q = update.callback_query
     await q.answer()
 
-    country = q.data.split(":")[1]
-    context.user_data["country"] = country
+    context.user_data["country"] = q.data.split(":")[1]
 
     keyboard = [
         [InlineKeyboardButton(cat, callback_data=f"cat:{cat}")]
@@ -143,15 +130,13 @@ async def choose_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     msg = await q.message.reply_text(
-        "📦 Выбери категорию товара:",
+        "📦 Выбери категорию:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     save_last(context, msg)
 
-# ================= CATEGORY =================
-
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await clear_last(context)
+    await delete_last(context)
     q = update.callback_query
     await q.answer()
 
@@ -169,35 +154,31 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     save_last(context, msg)
 
-# ================= SUBCATEGORY =================
-
 async def choose_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await clear_last(context)
+    await delete_last(context)
     q = update.callback_query
     await q.answer()
 
-    sub = q.data.split(":")[1]
-    context.user_data["subcategory"] = sub
-    context.user_data["step"] = "price"
+    context.user_data["subcategory"] = q.data.split(":")[1]
+    context.user_data["state"] = WAIT_PRICE
 
     msg = await q.message.reply_text(
-        "💰 Введи стоимость товара **числом**:"
+        "💰 Введи стоимость товара **ТОЛЬКО числом**:"
     )
     save_last(context, msg)
 
 # ================= PRICE =================
-
-async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("step") != "price":
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("state") != WAIT_PRICE:
         return
 
-    raw = update.message.text
+    raw = update.message.text.strip()
     cleaned = "".join(c for c in raw if c.isdigit() or c in ".,").replace(",", ".")
 
     try:
         price = float(cleaned)
     except:
-        await update.message.reply_text("❌ Введи цену **только числом**")
+        await update.message.reply_text("❌ Введи цену **числом**, например: 12000")
         return
 
     country = context.user_data["country"]
@@ -205,16 +186,14 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if country == "Китай":
         rub = price * get_rate("CNY", "RUB")
     else:
-        usd = price
-        if country == "Европа":
-            usd = price * get_rate("EUR", "USD")
-        rub = usd * get_rate("USD", "RUB")
+        rub = price * get_rate("USD", "RUB")
 
     rub *= (1 + BANK_FEE)
     commission = calc_commission(rub)
     total = int(rub + commission)
 
     context.user_data["total"] = total
+    context.user_data["state"] = None
 
     keyboard = [
         [
@@ -224,10 +203,10 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     msg = await update.message.reply_text(
-        f"📦 **Итог расчёта**\n\n"
+        f"📦 **Расчёт**\n\n"
         f"🌍 Страна: {country}\n"
         f"🛍 Товар: {context.user_data['subcategory']}\n"
-        f"💰 Цена: ~{total} ₽\n"
+        f"💰 Итого: ~{total} ₽\n"
         f"🚚 Срок: {DELIVERY_TIME[country]}",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -235,9 +214,8 @@ async def handle_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_last(context, msg)
 
 # ================= CONFIRM =================
-
 async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await clear_last(context)
+    await delete_last(context)
     q = update.callback_query
     await q.answer()
 
@@ -245,7 +223,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("""
-        INSERT INTO orders VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO orders VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             order_id,
             q.from_user.id,
@@ -253,8 +231,6 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["country"],
             context.user_data["category"],
             context.user_data["subcategory"],
-            0,
-            "",
             context.user_data["total"],
             "В обработке",
             datetime.now().isoformat()
@@ -267,15 +243,14 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await q.message.reply_text(
         f"✅ Заказ **{order_id}** принят.\n"
-        "Менеджер скоро свяжется с вами.",
+        "Менеджер свяжется с вами.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     save_last(context, msg)
     context.user_data.clear()
 
-# ================= MY ORDERS =================
-
+# ================= EXTRA =================
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -292,11 +267,10 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.message.reply_text(text, parse_mode="Markdown")
 
-async def new_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 # ================= ADMIN =================
-
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -313,7 +287,6 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 # ================= MAIN =================
-
 def main():
     init_db()
 
@@ -327,9 +300,9 @@ def main():
     app.add_handler(CallbackQueryHandler(choose_sub, "^sub:"))
     app.add_handler(CallbackQueryHandler(confirm, "^confirm$"))
     app.add_handler(CallbackQueryHandler(my_orders, "^my_orders$"))
-    app.add_handler(CallbackQueryHandler(new_order, "^new$"))
+    app.add_handler(CallbackQueryHandler(new, "^new$"))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_price))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("🤖 Bot started")
     app.run_polling()
