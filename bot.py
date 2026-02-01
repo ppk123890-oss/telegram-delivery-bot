@@ -116,7 +116,7 @@ def round_weight(weight: float) -> float:
         return int(weight) + 0.3
     return int(weight) + 1
 
-aasync def delete_last_message(context):
+async def delete_last_message(context):
     chat_id = context.user_data.get("chat_id")
     message_id = context.user_data.get("last_message_id")
     if not chat_id or not message_id:
