@@ -116,7 +116,7 @@ def round_weight(weight: float) -> float:
         return int(weight) + 0.3
     return int(weight) + 1
 
-async def delete_last_message(context: ContextTypes.DEFAULT_TYPE):
+aasync def delete_last_message(context):
     chat_id = context.user_data.get("chat_id")
     message_id = context.user_data.get("last_message_id")
     if not chat_id or not message_id:
@@ -125,6 +125,9 @@ async def delete_last_message(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.delete_message(chat_id, message_id)
     except:
         pass
+    finally:
+        context.user_data["last_message_id"] = None
+
 
 def save_last_message(context: ContextTypes.DEFAULT_TYPE, msg):
     context.user_data["last_message_id"] = msg.message_id
@@ -209,7 +212,7 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["state"] = STATE_WAIT_PRICE
 
     msg = await q.message.reply_text(
-        "💰 Введи стоимость товара **числом**:"
+        "💰 Введи стоимость товара:"
     )
     save_last_message(context, msg)
 
