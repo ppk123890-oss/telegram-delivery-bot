@@ -9,6 +9,9 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 import aiosqlite
 
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+
 class OrderFSM(StatesGroup):
     country = State()
     category = State()
