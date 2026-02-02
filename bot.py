@@ -119,6 +119,8 @@ def europe_currency_kb():
 
 # ================== HANDLERS ==================
 
+@# ================= START / INFO =================
+
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     text = (
@@ -132,6 +134,7 @@ async def start_handler(message: Message):
     )
     await message.answer(text, reply_markup=main_keyboard, parse_mode="Markdown")
 
+
 @dp.message(F.text == "ℹ️ Информация")
 async def info_handler(message: Message):
     await message.answer(
@@ -142,13 +145,30 @@ async def info_handler(message: Message):
         parse_mode="Markdown"
     )
 
+
 @dp.message(F.text == "🧾 Мои заказы")
 async def my_orders_placeholder(message: Message):
     await message.answer(
         "🧾 У вас пока нет оформленных заказов.\n\n"
         "Нажмите «📦 Рассчитать заказ», чтобы создать новый."
     )
-    @dp.callback_query(F.data.startswith("country_"))
+
+# ================= START ORDER =================
+
+@dp.callback_query(F.data == "calculate_order")
+async def start_order(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(OrderFSM.country)
+
+    await callback.message.answer(
+        "🌍 Выберите страну покупки товара:",
+        reply_markup=countries_kb()
+    )
+    await callback.answer()
+
+# ================= COUNTRY =================
+
+@dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
 async def choose_country(callback: CallbackQuery, state: FSMContext):
     country_map = {
         "country_china": "Китай",
@@ -158,31 +178,60 @@ async def choose_country(callback: CallbackQuery, state: FSMContext):
         "country_europe": "Европа"
     }
 
-    @dp.callback_query(F.data == "calculate_order")
-async def calculate_order(callback: CallbackQuery, state: FSMContext):
-    await state.clear()  # на всякий, чтобы начать с нуля
-    await state.set_state(OrderFSM.country)
-
-    await callback.message.answer(
-        "🌍 Выбери страну доставки:",
-        reply_markup=countries_kb()
-    )
-
-    await callback.answer()
-
-
     country = country_map.get(callback.data)
 
+    if not country:
+        await callback.answer("Ошибка выбора страны", show_alert=True)
+        return
+
     await state.update_data(country=country)
-    await state.set_state(OrderFSM.category)
+
+    if country == "Европа":
+        await state.set_state(OrderFSM.currency)
+        await callback.message.answer(
+            "💱 Выберите валюту оплаты:",
+            reply_markup=europe_currency_kb()
+        )
+        await callback.answer()
+        return
+
+    auto_currency = {
+        "Китай": "CNY",
+        "США": "USD",
+        "Южная Корея": "KRW",
+        "Япония": "JPY"
+    }
+
+    currency = auto_currency.get(country)
+    await state.update_data(currency=currency)
 
     await callback.message.answer(
-        f"✅ Страна выбрана: {country}\n\n"
-        "📦 Теперь выбери категорию товара:",
-        reply_markup=categories_kb()
+        f"✅ Страна: <b>{country}</b>\n"
+        f"💱 Валюта: <b>{currency}</b>\n\n"
+        "Двигаемся дальше…"
     )
-
     await callback.answer()
+
+# ================= CURRENCY (EU) =================
+
+@dp.callback_query(OrderFSM.currency, F.data.startswith("currency_"))
+async def choose_currency(callback: CallbackQuery, state: FSMContext):
+    currency = callback.data.replace("currency_", "")
+
+    if currency not in {"EUR", "GBP", "PLN"}:
+        await callback.answer("Ошибка выбора валюты", show_alert=True)
+        return
+
+    await state.update_data(currency=currency)
+
+    await callback.message.answer(
+        f"💱 Валюта выбрана: <b>{currency}</b>\n\n"
+        "Двигаемся дальше…"
+    )
+    await callback.answer()
+
+# ================= CATEGORY =================
+
 @dp.callback_query(OrderFSM.category, F.data.startswith("category_"))
 async def choose_category(callback: CallbackQuery, state: FSMContext):
     category_map = {
@@ -207,12 +256,18 @@ async def choose_category(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.answer()
+
+# ================= PRODUCT =================
+
 @dp.message(OrderFSM.product)
 async def enter_product(message: Message, state: FSMContext):
     await state.update_data(product=message.text)
     await state.set_state(OrderFSM.quantity)
 
     await message.answer("🔢 Введи количество товара:")
+
+# ================= QUANTITY =================
+
 @dp.message(OrderFSM.quantity)
 async def enter_quantity(message: Message, state: FSMContext):
     if not message.text.isdigit():
@@ -231,87 +286,7 @@ async def enter_quantity(message: Message, state: FSMContext):
     )
 
     await state.clear()
-@dp.callback_query(F.data == "calculate_order")
-async def start_order(callback: CallbackQuery, state: FSMContext):
-    await state.clear()  # начинаем новый заказ
-    await state.set_state(OrderFSM.country)
 
-    await callback.message.answer(
-        "🌍 Выберите страну покупки товара:",
-        reply_markup=countries_kb()
-    )
-    await callback.answer()
-
-@dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
-async def choose_country(callback: CallbackQuery, state: FSMContext):
-    country_map = {
-        "country_china": "Китай",
-        "country_usa": "США",
-        "country_korea": "Южная Корея",
-        "country_japan": "Япония",
-        "country_europe": "Европа"
-    }
-
-    country = country_map.get(callback.data)
-
-    if not country:
-        await callback.answer("Ошибка выбора страны", show_alert=True)
-        return
-
-    await state.update_data(country=country)
-
-    # ⛔ дальше пока НЕ идём (валюты будут следующим этапом)
-    await callback.message.answer(
-        f"✅ Страна выбрана: <b>{country}</b>\n\n"
-        "Двигаемся дальше…"
-    )
-
-    await callback.answer()
-    
-
-    # 🇪🇺 ЕВРОПА → СПРАШИВАЕМ ВАЛЮТУ
-    if country == "Европа":
-        await state.set_state(OrderFSM.currency)
-        await callback.message.answer(
-            "💱 Выберите валюту оплаты:",
-            reply_markup=europe_currency_kb()
-        )
-        await callback.answer()
-        return
-
-    # 🌍 ОСТАЛЬНЫЕ СТРАНЫ → ВАЛЮТА АВТО
-    auto_currency = {
-        "Китай": "CNY",
-        "США": "USD",
-        "Южная Корея": "KRW",
-        "Япония": "JPY"
-    }
-
-    currency = auto_currency.get(country)
-    await state.update_data(currency=currency)
-
-    # ⛔ дальше пойдём в следующем этапе (категории)
-    await callback.message.answer(
-        f"✅ Страна: <b>{country}</b>\n"
-        f"💱 Валюта: <b>{currency}</b>\n\n"
-        "Двигаемся дальше…"
-    )
-    await callback.answer()
-@dp.callback_query(OrderFSM.currency, F.data.startswith("currency_"))
-async def choose_currency(callback: CallbackQuery, state: FSMContext):
-    currency = callback.data.replace("currency_", "")
-
-    if currency not in {"EUR", "GBP", "PLN"}:
-        await callback.answer("Ошибка выбора валюты", show_alert=True)
-        return
-
-    await state.update_data(currency=currency)
-
-    await callback.message.answer(
-        f"💱 Валюта выбрана: <b>{currency}</b>\n\n"
-        "Двигаемся дальше…"
-    )
-    await callback.answer()
 
 
 # ================== START ==================
