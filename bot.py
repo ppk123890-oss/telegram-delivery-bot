@@ -41,6 +41,11 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# ================= FSM =================
+class OrderFSM(StatesGroup):
+    country = State()
+
+
 # ================== DATABASE ==================
 
 async def init_storage():
@@ -94,6 +99,16 @@ main_keyboard = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+def countries_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇨🇳 Китай", callback_data="country_china")],
+        [InlineKeyboardButton(text="🇺🇸 США", callback_data="country_usa")],
+        [InlineKeyboardButton(text="🇰🇷 Южная Корея", callback_data="country_korea")],
+        [InlineKeyboardButton(text="🇯🇵 Япония", callback_data="country_japan")],
+        [InlineKeyboardButton(text="🇪🇺 Европа", callback_data="country_europe")]
+    ])
 
 # ================== HANDLERS ==================
 
@@ -135,7 +150,7 @@ async def choose_country(callback: CallbackQuery, state: FSMContext):
         "country_japan": "Япония",
         "country_europe": "Европа"
     }
-    
+
     @dp.callback_query(F.data == "calculate_order")
 async def calculate_order(callback: CallbackQuery, state: FSMContext):
     await state.clear()  # на всякий, чтобы начать с нуля
@@ -209,6 +224,41 @@ async def enter_quantity(message: Message, state: FSMContext):
     )
 
     await state.clear()
+@dp.callback_query(F.data == "calculate_order")
+async def start_order(callback: CallbackQuery, state: FSMContext):
+    await state.clear()  # начинаем новый заказ
+    await state.set_state(OrderFSM.country)
+
+    await callback.message.answer(
+        "🌍 Выберите страну покупки товара:",
+        reply_markup=countries_kb()
+    )
+    await callback.answer()
+@dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
+async def choose_country(callback: CallbackQuery, state: FSMContext):
+    country_map = {
+        "country_china": "Китай",
+        "country_usa": "США",
+        "country_korea": "Южная Корея",
+        "country_japan": "Япония",
+        "country_europe": "Европа"
+    }
+
+    country = country_map.get(callback.data)
+
+    if not country:
+        await callback.answer("Ошибка выбора страны", show_alert=True)
+        return
+
+    await state.update_data(country=country)
+
+    # ⛔ дальше пока НЕ идём (валюты будут следующим этапом)
+    await callback.message.answer(
+        f"✅ Страна выбрана: <b>{country}</b>\n\n"
+        "Двигаемся дальше…"
+    )
+
+    await callback.answer()
 
 
 # ================== START ==================
