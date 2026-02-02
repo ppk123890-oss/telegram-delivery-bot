@@ -266,6 +266,7 @@ async def choose_country(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.answer()
+    
 @dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
 async def choose_country(callback: CallbackQuery, state: FSMContext):
     country_map = {
