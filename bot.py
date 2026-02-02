@@ -1,121 +1,96 @@
 import asyncio
 import logging
 import os
-import json
-from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
-import aiosqlite
 
-# ================== CONFIG ==================
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-ADMIN_IDS = {6691490829}
-
-DATA_DIR = "/app/data"
-DB_PATH = f"{DATA_DIR}/orders.db"
-BACKUP_PATH = f"{DATA_DIR}/backup_orders.json"
+# ====== ВАЖНО: ИМПОРТЫ FSM ======
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 logging.basicConfig(level=logging.INFO)
 
-# ================== BOT ==================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ================== DATABASE ==================
+# ==================================================
+# ❗❗❗ ВОТ ЭТО И ЕСТЬ FSM + КЛАСС ❗❗❗
+# ==================================================
 
-async def init_storage():
-    os.makedirs(DATA_DIR, exist_ok=True)
+class OrderFSM(StatesGroup):
+    choosing_country = State()
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            country TEXT,
-            category TEXT,
-            subcategory TEXT,
-            item_description TEXT,
-            weight REAL,
-            item_price REAL,
-            currency TEXT,
-            goods_rub REAL,
-            bank_commission REAL,
-            service_commission REAL,
-            delivery_rub REAL,
-            final_price REAL,
-            delivery_time TEXT,
-            status TEXT,
-            created_at TEXT
-        )
-        """)
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS exchange_rates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            from_currency TEXT,
-            to_currency TEXT,
-            rate REAL,
-            date TEXT
-        )
-        """)
-        await db.commit()
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+# ЭТО:
+# - class = "коробка"
+# - OrderFSM = имя коробки
+# - choosing_country = шаг №1
+# ==================================================
 
-    # создаём backup-файл, если его нет
-    if not os.path.exists(BACKUP_PATH):
-        with open(BACKUP_PATH, "w", encoding="utf-8") as f:
-            json.dump([], f)
+# ====== КНОПКИ СТРАН (НЕ FSM, ПРОСТО КНОПКИ) ======
 
-# ================== KEYBOARDS ==================
-
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📦 Рассчитать заказ")],
-        [KeyboardButton(text="🧾 Мои заказы")],
-        [KeyboardButton(text="ℹ️ Информация")]
-    ],
-    resize_keyboard=True
+country_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="🇨🇳 Китай", callback_data="country_china")],
+        [InlineKeyboardButton(text="🇺🇸 США", callback_data="country_usa")],
+        [InlineKeyboardButton(text="🇪🇺 Европа", callback_data="country_europe")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+    ]
 )
 
-# ================== HANDLERS ==================
+# ==================================================
+# ХЕНДЛЕРЫ (ЛОГИКА)
+# ==================================================
 
 @dp.message(CommandStart())
-async def start_handler(message: Message):
-    text = (
-        "👋 Добро пожаловать в *Kory Delivery*\n\n"
-        "Я помогу рассчитать *полную стоимость доставки заказа* "
-        "с учётом цены товара, доставки, комиссий и актуального курса валют.\n\n"
-        "📌 Расчёт предварительный, курс фиксируется на день запроса.\n\n"
-        "Выберите действие ниже ⬇️\n\n"
-        "⚡ Не хотите ждать доставку?\n"
-        "Сочные товары в наличии: @Slv17sSs"
+async def start(message: Message):
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📦 Рассчитать заказ")]
+        ],
+        resize_keyboard=True
     )
-    await message.answer(text, reply_markup=main_keyboard, parse_mode="Markdown")
 
-@dp.message(F.text == "ℹ️ Информация")
-async def info_handler(message: Message):
     await message.answer(
-        "ℹ️ *Информация*\n\n"
-        "• Бот считает предварительную стоимость доставки\n"
-        "• Итоговая цена может немного отличаться\n"
-        "• После подтверждения заказа менеджер свяжется с вами",
-        parse_mode="Markdown"
+        "Привет 👋\nНажми кнопку ниже, чтобы начать расчёт",
+        reply_markup=kb
     )
 
-@dp.message(F.text == "🧾 Мои заказы")
-async def my_orders_placeholder(message: Message):
+# ====== КНОПКА «РАССЧИТАТЬ ЗАКАЗ» ======
+
+@dp.message(F.text == "📦 Рассчитать заказ")
+async def start_order(message: Message, state: FSMContext):
+    await state.set_state(OrderFSM.choosing_country)
+
     await message.answer(
-        "🧾 У вас пока нет оформленных заказов.\n\n"
-        "Нажмите «📦 Рассчитать заказ», чтобы создать новый."
+        "Выбери страну отправления:",
+        reply_markup=country_keyboard
     )
 
-# ================== START ==================
+# ====== НАЖАТИЕ НА КНОПКУ СТРАНЫ ======
+
+@dp.callback_query(F.data.startswith("country_"))
+async def choose_country(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("Страна выбрана ✅")
+    await callback.answer()
+
+# ====== ОТМЕНА ======
+
+@dp.callback_query(F.data == "cancel")
+async def cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("Отменено ❌")
+    await callback.answer()
+
+# ==================================================
 
 async def main():
-    await init_storage()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
