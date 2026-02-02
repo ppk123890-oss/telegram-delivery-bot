@@ -42,7 +42,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # ================= FSM =================
-cclass OrderFSM(StatesGroup):
+class OrderFSM(StatesGroup):
     country = State()
     currency = State()   # 👈 ЭТАП 2
 
