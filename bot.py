@@ -119,7 +119,7 @@ def europe_currency_kb():
 
 # ================== HANDLERS ==================
 
-@# ================= START / INFO =================
+# ================= START / INFO =================
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
