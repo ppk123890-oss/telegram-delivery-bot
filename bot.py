@@ -241,7 +241,7 @@ async def start_order(callback: CallbackQuery, state: FSMContext):
         reply_markup=countries_kb()
     )
     await callback.answer()
-    
+
 @dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
 async def choose_country(callback: CallbackQuery, state: FSMContext):
     country_map = {
@@ -268,22 +268,6 @@ async def choose_country(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
     
-@dp.callback_query(OrderFSM.country, F.data.startswith("country_"))
-async def choose_country(callback: CallbackQuery, state: FSMContext):
-    country_map = {
-        "country_china": "Китай",
-        "country_usa": "США",
-        "country_korea": "Южная Корея",
-        "country_japan": "Япония",
-        "country_europe": "Европа"
-    }
-
-    country = country_map.get(callback.data)
-    if not country:
-        await callback.answer("Ошибка выбора страны", show_alert=True)
-        return
-
-    await state.update_data(country=country)
 
     # 🇪🇺 ЕВРОПА → СПРАШИВАЕМ ВАЛЮТУ
     if country == "Европа":
