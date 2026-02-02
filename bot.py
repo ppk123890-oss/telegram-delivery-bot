@@ -14,11 +14,13 @@ class OrderFSM(StatesGroup):
     category = State()
     product = State()
     quantity = State()
-    class OrderFSM(StatesGroup):
+
+class OrderFSM(StatesGroup):
     country = State()
     category = State()
     product = State()
     quantity = State()
+
 
 
 # ================== CONFIG ==================
