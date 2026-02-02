@@ -135,6 +135,19 @@ async def choose_country(callback: CallbackQuery, state: FSMContext):
         "country_japan": "Япония",
         "country_europe": "Европа"
     }
+    
+    @dp.callback_query(F.data == "calculate_order")
+async def calculate_order(callback: CallbackQuery, state: FSMContext):
+    await state.clear()  # на всякий, чтобы начать с нуля
+    await state.set_state(OrderFSM.country)
+
+    await callback.message.answer(
+        "🌍 Выбери страну доставки:",
+        reply_markup=countries_kb()
+    )
+
+    await callback.answer()
+
 
     country = country_map.get(callback.data)
 
