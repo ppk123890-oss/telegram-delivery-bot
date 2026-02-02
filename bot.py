@@ -12,6 +12,14 @@ import aiosqlite
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
+import os
+from aiogram import Bot
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+bot = Bot(token=BOT_TOKEN)
+
+
 class OrderFSM(StatesGroup):
     country = State()
     category = State()
@@ -29,6 +37,7 @@ class OrderFSM(StatesGroup):
 # ================== CONFIG ==================
 
 import os
+
 TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_IDS = {6691490829}
