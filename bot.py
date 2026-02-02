@@ -291,7 +291,7 @@ async def enter_quantity(message: Message, state: FSMContext):
 
 # ================== START ==================
 
-aasync def main():
+async def main():
     bot = Bot("TOKEN", parse_mode=ParseMode.HTML)
     dp = Dispatcher()
     dp.include_router(router)
