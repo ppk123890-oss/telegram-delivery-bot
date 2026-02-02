@@ -9,9 +9,22 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 import aiosqlite
 
+class OrderFSM(StatesGroup):
+    country = State()
+    category = State()
+    product = State()
+    quantity = State()
+    class OrderFSM(StatesGroup):
+    country = State()
+    category = State()
+    product = State()
+    quantity = State()
+
+
 # ================== CONFIG ==================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+import os
+TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_IDS = {6691490829}
 
@@ -111,12 +124,88 @@ async def my_orders_placeholder(message: Message):
         "🧾 У вас пока нет оформленных заказов.\n\n"
         "Нажмите «📦 Рассчитать заказ», чтобы создать новый."
     )
+    @dp.callback_query(F.data.startswith("country_"))
+async def choose_country(callback: CallbackQuery, state: FSMContext):
+    country_map = {
+        "country_china": "Китай",
+        "country_usa": "США",
+        "country_korea": "Южная Корея",
+        "country_japan": "Япония",
+        "country_europe": "Европа"
+    }
+
+    country = country_map.get(callback.data)
+
+    await state.update_data(country=country)
+    await state.set_state(OrderFSM.category)
+
+    await callback.message.answer(
+        f"✅ Страна выбрана: {country}\n\n"
+        "📦 Теперь выбери категорию товара:",
+        reply_markup=categories_kb()
+    )
+
+    await callback.answer()
+@dp.callback_query(OrderFSM.category, F.data.startswith("category_"))
+async def choose_category(callback: CallbackQuery, state: FSMContext):
+    category_map = {
+        "category_electronics": "Электроника",
+        "category_clothes": "Одежда",
+        "category_cosmetics": "Косметика",
+        "category_toys": "Игрушки"
+    }
+
+    category = category_map.get(callback.data)
+
+    await state.update_data(category=category)
+    await state.set_state(OrderFSM.product)
+
+    data = await state.get_data()
+
+    await callback.message.answer(
+        f"✅ Категория выбрана\n\n"
+        f"🌍 Страна: {data['country']}\n"
+        f"📦 Категория: {category}\n\n"
+        "✏️ Напиши название товара:"
+    )
+
+    await callback.answer()
+@dp.message(OrderFSM.product)
+async def enter_product(message: Message, state: FSMContext):
+    await state.update_data(product=message.text)
+    await state.set_state(OrderFSM.quantity)
+
+    await message.answer("🔢 Введи количество товара:")
+@dp.message(OrderFSM.quantity)
+async def enter_quantity(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Нужно число")
+        return
+
+    await state.update_data(quantity=int(message.text))
+    data = await state.get_data()
+
+    await message.answer(
+        "✅ ЗАКАЗ ГОТОВ\n\n"
+        f"🌍 {data['country']}\n"
+        f"📦 {data['category']}\n"
+        f"📝 {data['product']}\n"
+        f"🔢 {data['quantity']}"
+    )
+
+    await state.clear()
+
 
 # ================== START ==================
 
-async def main():
-    await init_storage()
+aasync def main():
+    bot = Bot("TOKEN", parse_mode=ParseMode.HTML)
+    dp = Dispatcher()
+    dp.include_router(router)
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
+
