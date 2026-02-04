@@ -1,3 +1,4 @@
+print(">>> RUNNING THIS BOT.PY FILE <<<")
 
 import asyncio
 import logging
@@ -16,18 +17,11 @@ from aiogram.fsm.context import FSMContext
 import os
 from aiogram import Bot
 
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
+bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 
-
+from aiogram.enums import ParseMode
 
 
 # ================== CONFIG ==================
@@ -294,8 +288,13 @@ async def enter_quantity(message: Message, state: FSMContext):
     await state.clear()
 
 
+async def main():
+    bot = Bot("TOKEN", parse_mode=ParseMode.HTML)
+    dp = Dispatcher()
+    dp.include_router(router)
 
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling(bot))
+    asyncio.run(main())
